@@ -1,5 +1,5 @@
 # .github/workflows/bootstrap.yml
-name: 🚀 Bootstrap - Création du Backend Terraform
+name: 1. 🚀 Bootstrap - Création du Backend Terraform
 
 on:
   workflow_dispatch:
@@ -51,7 +51,6 @@ jobs:
         run: |
           echo "🔍 Vérification du fournisseur OIDC..."
           
-          # Vérifier si le fournisseur OIDC existe déjà
           OIDC_EXISTS=$(aws iam list-open-id-connect-providers --region ${{ env.AWS_REGION }} \
             --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')]" \
             --output text)
@@ -75,21 +74,19 @@ jobs:
         run: |
           echo "🔍 Vérification du rôle IAM : ${{ env.ROLE_NAME }}"
           
-          # Vérifier si le rôle existe déjà
           ROLE_EXISTS=$(aws iam get-role --role-name ${{ env.ROLE_NAME }} --region ${{ env.AWS_REGION }} 2>&1 || echo "NOT_FOUND")
           
           if echo "$ROLE_EXISTS" | grep -q "NOT_FOUND"; then
             echo "📦 Création du rôle IAM : ${{ env.ROLE_NAME }}..."
             
-            # Créer le fichier de politique de confiance
-            cat > trust-policy.json << EOF
-            {
+            # ✅ Utilisation de printf pour créer le fichier JSON sans erreur
+            printf '{
               "Version": "2012-10-17",
               "Statement": [
                 {
                   "Effect": "Allow",
                   "Principal": {
-                    "Federated": "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:oidc-provider/token.actions.githubusercontent.com"
+                    "Federated": "arn:aws:iam::%s:oidc-provider/token.actions.githubusercontent.com"
                   },
                   "Action": "sts:AssumeRoleWithWebIdentity",
                   "Condition": {
@@ -102,8 +99,10 @@ jobs:
                   }
                 }
               ]
-            }
-            EOF
+            }' "${{ env.AWS_ACCOUNT_ID }}" > trust-policy.json
+            
+            # ✅ Afficher le contenu pour vérifier
+            cat trust-policy.json
             
             # Créer le rôle
             aws iam create-role \
@@ -135,9 +134,6 @@ jobs:
           ROLE_ARN="arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}"
           echo "✅ Rôle IAM prêt : $ROLE_ARN"
           echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
-          
-          # Mettre à jour le secret GitHub (optionnel)
-          echo "💡 Vous pouvez maintenant utiliser ce rôle avec OIDC"
 
   # ============================================================
   # PHASE 2 : Bootstrap Terraform
