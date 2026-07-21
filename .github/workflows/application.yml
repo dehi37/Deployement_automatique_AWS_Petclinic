@@ -2,6 +2,7 @@
 name: 3. 🐳 Application - Build & Deploy
 
 on:
+  workflow_dispatch:  # ← AJOUTER CETTE LIGNE
   push:
     branches:
       - main
