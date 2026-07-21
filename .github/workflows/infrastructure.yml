@@ -2,7 +2,7 @@
 name: 2. 🏗️ Infrastructure - Plan & Apply
 
 on:
-  workflow_dispatch:  # ← AJOUTER CETTE LIGNE
+  workflow_dispatch:
   push:
     branches:
       - main
@@ -22,7 +22,7 @@ on:
       - '!terraform/bootstrap/**'
       - '!terraform/iam-github-actions.tf'
   schedule:
-    - cron: '0 8 * * *'  # Tous les jours à 8h
+    - cron: '0 8 * * *'
 
 permissions:
   id-token: write
@@ -75,13 +75,13 @@ jobs:
         continue-on-error: true
 
   # ============================================================
-  # JOB 2 : Terraform Plan - Dev (sur PR uniquement)
+  # JOB 2 : Terraform Plan - Dev
   # ============================================================
   terraform-plan:
     name: 📋 Terraform Plan - Dev
     runs-on: ubuntu-latest
     needs: terraform-security
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
@@ -127,13 +127,13 @@ jobs:
             });
 
   # ============================================================
-  # JOB 3 : Terraform Apply - Dev (sur merge sur main)
+  # JOB 3 : Terraform Apply - Dev
   # ============================================================
   terraform-apply:
     name: 🚀 Terraform Apply - Dev
     runs-on: ubuntu-latest
     needs: terraform-plan
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
@@ -171,12 +171,12 @@ jobs:
           echo "- Region: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
 
   # ============================================================
-  # JOB 4 : Drift Detection (ACTIF - utilise les clés AWS)
+  # JOB 4 : Drift Detection
   # ============================================================
   infrastructure-drift:
     name: 🔍 Drift Detection (Schedule)
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
       - name: Checkout code
