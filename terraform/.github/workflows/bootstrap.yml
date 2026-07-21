@@ -7,9 +7,9 @@ on:
     branches:
       - main
     paths:
-      - 'bootstrap/**'
-      - 'iam-github-actions.tf'
-      - '.github/workflows/bootstrap.yml'
+      - 'terraform/bootstrap/**'
+      - 'terraform/iam-github-actions.tf'
+      - 'terraform/.github/workflows/bootstrap.yml'
 
 permissions:
   id-token: write
@@ -17,7 +17,7 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  TF_ROOT: bootstrap          # ✅ Pointe vers bootstrap (pas dev)
+  TF_ROOT: terraform/bootstrap          # ✅ Chemin corrigé depuis la racine
 
 jobs:
   bootstrap-security:
@@ -35,7 +35,7 @@ jobs:
 
       - name: Run tfsec
         run: |
-          tfsec ./bootstrap --soft-fail
+          tfsec ./terraform/bootstrap --soft-fail
 
       - name: Install Checkov
         run: |
@@ -44,7 +44,7 @@ jobs:
 
       - name: Run Checkov
         run: |
-          checkov --directory ./bootstrap --framework terraform --soft-fail
+          checkov --directory ./terraform/bootstrap --framework terraform --soft-fail
 
   terraform-plan:
     name: 📋 Terraform Plan - Bootstrap
@@ -64,7 +64,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.GITHUB_ACTIONS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.ACTIONS_ROLE_ARN }}  # ✅ Nom corrigé (sans GITHUB_)
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -112,7 +112,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.GITHUB_ACTIONS_ROLE_ARN }}
+          role-to-assume: ${{ secrets.ACTIONS_ROLE_ARN }}  # ✅ Nom corrigé
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -136,3 +136,51 @@ jobs:
           echo "1. Vérifier que le bucket et la table existent" >> $GITHUB_STEP_SUMMARY
           echo "2. Lancer le pipeline **Infrastructure** pour déployer l'infrastructure complète" >> $GITHUB_STEP_SUMMARY
           echo "3. Les variables sont dans \`environments/dev/variables.tf\`" >> $GITHUB_STEP_SUMMARY
+
+  bootstrap-verify:
+    name: ✅ Verify Bootstrap
+    runs-on: ubuntu-latest
+    needs: terraform-apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.5.0'
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.ACTIONS_ROLE_ARN }}  # ✅ Nom corrigé
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify S3 Bucket
+        run: |
+          BUCKET_NAME="petclinic-tfstate-2026"
+          if aws s3 ls "s3://$BUCKET_NAME" 2>&1 | grep -q 'NoSuchBucket'; then
+            echo "❌ Bucket S3 non trouvé !" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ Bucket S3 existe : $BUCKET_NAME" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Verify DynamoDB Table
+        run: |
+          TABLE_NAME="petclinic-tf-locks"
+          if aws dynamodb describe-table --table-name $TABLE_NAME --region ${{ env.AWS_REGION }} 2>&1 | grep -q 'ResourceNotFoundException'; then
+            echo "❌ Table DynamoDB non trouvée !" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ Table DynamoDB existe : $TABLE_NAME" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Verify Terraform State Access
+        run: |
+          cd ${{ env.TF_ROOT }}
+          terraform init -reconfigure
+          terraform state list 2>&1 | head -5
+          echo "✅ Accès à l'état Terraform réussi" >> $GITHUB_STEP_SUMMARY
