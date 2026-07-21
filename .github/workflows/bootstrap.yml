@@ -1,5 +1,5 @@
 # .github/workflows/bootstrap.yml
-name: 1. 🚀 Bootstrap - Création du Backend Terraform
+name: 🚀 Bootstrap - Création du Backend Terraform
 
 on:
   workflow_dispatch:
@@ -19,12 +19,12 @@ env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: 049618906674
   TF_ROOT: terraform/bootstrap
+  ROLE_NAME: petclinic-github-actions-role
 
 jobs:
   # ============================================================
-  # PHASE 1 : Création du rôle IAM pour GitHub Actions
+  # PHASE 1 : Création du rôle IAM (si inexistant)
   # ============================================================
-  # .github/workflows/bootstrap.yml
   create-iam-role:
     name: 🔐 Création du rôle IAM (OIDC)
     runs-on: ubuntu-latest
@@ -33,7 +33,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ⬇️⬇️⬇️ AJOUTER CETTE ÉTAPE ⬇️⬇️⬇️
       - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,8 +47,10 @@ jobs:
           sudo ./aws/install --update
           aws --version
 
-      - name: Créer le fournisseur OIDC (si inexistant)
+      - name: Vérifier et créer le fournisseur OIDC (si inexistant)
         run: |
+          echo "🔍 Vérification du fournisseur OIDC..."
+          
           # Vérifier si le fournisseur OIDC existe déjà
           OIDC_EXISTS=$(aws iam list-open-id-connect-providers --region ${{ env.AWS_REGION }} \
             --query "OpenIDConnectProviderList[?contains(Arn, 'token.actions.githubusercontent.com')]" \
@@ -57,8 +58,6 @@ jobs:
           
           if [ -z "$OIDC_EXISTS" ]; then
             echo "📦 Création du fournisseur OIDC..."
-            
-            # Récupérer les thumbprints
             THUMBPRINT=$(openssl s_client -servername token.actions.githubusercontent.com -connect token.actions.githubusercontent.com:443 2>&1 | openssl x509 -fingerprint -noout | cut -d'=' -f2 | tr -d ':')
             
             aws iam create-open-id-connect-provider \
@@ -69,21 +68,21 @@ jobs:
             
             echo "✅ Fournisseur OIDC créé"
           else
-            echo "✅ Fournisseur OIDC existe déjà"
+            echo "✅ Fournisseur OIDC existe déjà : $OIDC_EXISTS"
           fi
 
       - name: Créer le rôle IAM (si inexistant)
         run: |
-          ROLE_NAME="petclinic-github-actions-role"
+          echo "🔍 Vérification du rôle IAM : ${{ env.ROLE_NAME }}"
           
           # Vérifier si le rôle existe déjà
-          ROLE_EXISTS=$(aws iam get-role --role-name $ROLE_NAME --region ${{ env.AWS_REGION }} 2>&1 || echo "NOT_FOUND")
+          ROLE_EXISTS=$(aws iam get-role --role-name ${{ env.ROLE_NAME }} --region ${{ env.AWS_REGION }} 2>&1 || echo "NOT_FOUND")
           
           if echo "$ROLE_EXISTS" | grep -q "NOT_FOUND"; then
-            echo "📦 Création du rôle IAM : $ROLE_NAME..."
+            echo "📦 Création du rôle IAM : ${{ env.ROLE_NAME }}..."
             
             # Créer le fichier de politique de confiance
-            cat > trust-policy.json << 'EOF'
+            cat > trust-policy.json << EOF
             {
               "Version": "2012-10-17",
               "Statement": [
@@ -108,46 +107,55 @@ jobs:
             
             # Créer le rôle
             aws iam create-role \
-              --role-name $ROLE_NAME \
+              --role-name ${{ env.ROLE_NAME }} \
               --assume-role-policy-document file://trust-policy.json \
               --description "Rôle IAM pour GitHub Actions - PetClinic" \
               --region ${{ env.AWS_REGION }}
             
-            echo "✅ Rôle IAM créé : $ROLE_NAME"
+            echo "✅ Rôle IAM créé : ${{ env.ROLE_NAME }}"
             
-            # Attacher les politiques
+            # Attacher la politique AdministratorAccess
             echo "📦 Attachement des politiques..."
             aws iam attach-role-policy \
-              --role-name $ROLE_NAME \
+              --role-name ${{ env.ROLE_NAME }} \
               --policy-arn arn:aws:iam::aws:policy/AdministratorAccess \
               --region ${{ env.AWS_REGION }}
             
             sleep 10
             echo "✅ Politiques attachées"
           else
-            echo "✅ Le rôle IAM existe déjà : $ROLE_NAME"
+            echo "✅ Le rôle IAM existe déjà : ${{ env.ROLE_NAME }}"
           fi
 
       - name: Vérifier le rôle IAM
         run: |
-          ROLE_ARN="arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/petclinic-github-actions-role"
-          echo "🔍 Vérification du rôle : $ROLE_ARN"
+          echo "🔍 Vérification finale du rôle..."
+          aws iam get-role --role-name ${{ env.ROLE_NAME }} --region ${{ env.AWS_REGION }}
           
-          aws iam get-role --role-name petclinic-github-actions-role --region ${{ env.AWS_REGION }}
-          
-          echo "✅ Rôle IAM prêt à être utilisé !"
+          ROLE_ARN="arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}"
+          echo "✅ Rôle IAM prêt : $ROLE_ARN"
           echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
+          
+          # Mettre à jour le secret GitHub (optionnel)
+          echo "💡 Vous pouvez maintenant utiliser ce rôle avec OIDC"
+
   # ============================================================
-  # PHASE 2 : Bootstrap Terraform (utilise le rôle créé)
+  # PHASE 2 : Bootstrap Terraform
   # ============================================================
   bootstrap-security:
     name: 🔒 IaC Security Scan - Bootstrap
     runs-on: ubuntu-latest
-    needs: create-iam-role  # ⬅️ Attends la création du rôle
+    needs: create-iam-role
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC avec le rôle créé)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Install tfsec
         run: |
@@ -171,9 +179,11 @@ jobs:
     name: 📋 Terraform Plan - Bootstrap
     runs-on: ubuntu-latest
     needs: 
-      - create-iam-role     # ⬅️ Attends la création du rôle
+      - create-iam-role
       - bootstrap-security
     
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -186,7 +196,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/petclinic-github-actions-role
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -205,7 +215,7 @@ jobs:
     name: 🚀 Terraform Apply - Bootstrap
     runs-on: ubuntu-latest
     needs: 
-      - create-iam-role     # ⬅️ Attends la création du rôle
+      - create-iam-role
       - terraform-plan
     
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -222,7 +232,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/petclinic-github-actions-role
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
@@ -241,16 +251,13 @@ jobs:
           echo "## ✅ Backend Terraform créé avec succès !" >> $GITHUB_STEP_SUMMARY
           echo "- **Bucket S3 :** $(terraform output -raw bucket_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
           echo "- **Table DynamoDB :** $(terraform output -raw dynamodb_table_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
-          echo "- **Rôle IAM :** arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/petclinic-github-actions-role" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 🚀 Prochaines étapes :" >> $GITHUB_STEP_SUMMARY
-          echo "1. Lancer le pipeline **Infrastructure**" >> $GITHUB_STEP_SUMMARY
+          echo "- **Rôle IAM :** arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}" >> $GITHUB_STEP_SUMMARY
 
   verify-bootstrap:
     name: ✅ Verify Bootstrap
     runs-on: ubuntu-latest
     needs: 
-      - create-iam-role     # ⬅️ Attends la création du rôle
+      - create-iam-role
       - terraform-apply
     
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -262,7 +269,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/petclinic-github-actions-role
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify S3 Bucket
@@ -287,10 +294,9 @@ jobs:
 
       - name: Verify IAM Role
         run: |
-          ROLE_NAME="petclinic-github-actions-role"
-          if aws iam get-role --role-name $ROLE_NAME --region ${{ env.AWS_REGION }} 2>&1 | grep -q 'NoSuchEntity'; then
+          if aws iam get-role --role-name ${{ env.ROLE_NAME }} --region ${{ env.AWS_REGION }} 2>&1 | grep -q 'NoSuchEntity'; then
             echo "❌ Rôle IAM non trouvé !" >> $GITHUB_STEP_SUMMARY
             exit 1
           else
-            echo "✅ Rôle IAM existe : $ROLE_NAME" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Rôle IAM existe : ${{ env.ROLE_NAME }}" >> $GITHUB_STEP_SUMMARY
           fi
