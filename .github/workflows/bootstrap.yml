@@ -1,5 +1,5 @@
 # .github/workflows/bootstrap.yml
-name: 1. 🚀 Bootstrap - Création du Backend Terraform
+name: 🚀 Bootstrap - Création du Backend Terraform
 
 on:
   workflow_dispatch:
@@ -22,16 +22,17 @@ env:
 
 jobs:
   # ============================================================
-  # Vérification du rôle IAM
+  # Bootstrap Terraform (directement avec les clés AWS)
   # ============================================================
-  verify-iam-role:
-    name: 🔐 Vérification du rôle IAM
+  bootstrap:
+    name: 🚀 Bootstrap - Création du Backend
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ✅ Utilise directement les clés AWS (pas OIDC)
       - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -39,100 +40,18 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Vérifier le rôle IAM
-        run: |
-          echo "🔍 Vérification du rôle IAM : ${{ env.ROLE_NAME }}"
-          
-          if aws iam get-role --role-name ${{ env.ROLE_NAME }} --region ${{ env.AWS_REGION }} 2>&1 | grep -q 'NoSuchEntity'; then
-            echo "❌ Le rôle IAM n'existe pas !"
-            echo ""
-            echo "📝 Créez-le manuellement via AWS Console :"
-            echo "   1. Aller sur IAM → Roles → Create role"
-            echo "   2. Trusted entity: Web identity"
-            echo "   3. Identity provider: token.actions.githubusercontent.com"
-            echo "   4. Audience: sts.amazonaws.com"
-            echo "   5. Condition StringLike: repo:dehi37/dehit_est_avec_un_environment:*"
-            echo "   6. Policy: AdministratorAccess"
-            echo "   7. Name: petclinic-github-actions-role"
-            exit 1
-          else
-            echo "✅ Rôle IAM existe : ${{ env.ROLE_NAME }}"
-            
-            ROLE_ARN="arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}"
-            echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
-            
-            # Afficher la trust policy pour vérification
-            echo "📋 Trust Policy :"
-            aws iam get-role --role-name ${{ env.ROLE_NAME }} --query 'Role.AssumeRolePolicyDocument' --output json --region ${{ env.AWS_REGION }}
-            
-            # Tester le rôle
-            echo "🧪 Test de l'assomption du rôle..."
-            if aws sts assume-role --role-arn $ROLE_ARN --role-session-name test-session --region ${{ env.AWS_REGION }} --duration-seconds 900 > /dev/null 2>&1; then
-              echo "✅ Le rôle peut être assumé avec succès !"
-            else
-              echo "❌ Le rôle ne peut pas être assumé !"
-              echo "📝 Vérifiez que la trust policy contient :"
-              echo "   StringLike: repo:dehi37/dehit_est_avec_un_environment:*"
-              exit 1
-            fi
-          fi
-
-  # ============================================================
-  # Bootstrap Terraform
-  # ============================================================
-  bootstrap-security:
-    name: 🔒 IaC Security Scan - Bootstrap
-    runs-on: ubuntu-latest
-    needs: verify-iam-role
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
-          aws-region: ${{ env.AWS_REGION }}
-
       - name: Vérifier les fichiers
         run: |
           echo "📂 Vérification du dossier :"
           ls -la terraform/bootstrap/ 2>/dev/null || echo "❌ Dossier non trouvé"
-          
+          echo ""
           echo "📝 Fichiers .tf :"
           find ./terraform -name "*.tf" -type f 2>/dev/null | head -10
-
-      - name: Terraform Validation
-        run: |
-          cd ${{ env.TF_ROOT }}
-          terraform init -backend=false
-          terraform validate
-        continue-on-error: true
-
-  terraform-plan:
-    name: 📋 Terraform Plan - Bootstrap
-    runs-on: ubuntu-latest
-    needs: 
-      - verify-iam-role
-      - bootstrap-security
-    
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.5.0'
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
-          aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform Init
         run: |
@@ -146,35 +65,6 @@ jobs:
           terraform plan -no-color | tee plan.txt
         continue-on-error: true
 
-  terraform-apply:
-    name: 🚀 Terraform Apply - Bootstrap
-    runs-on: ubuntu-latest
-    needs: 
-      - verify-iam-role
-      - terraform-plan
-    
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: '1.5.0'
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Terraform Init
-        run: |
-          cd ${{ env.TF_ROOT }}
-          terraform init -reconfigure
-
       - name: Terraform Apply
         run: |
           cd ${{ env.TF_ROOT }}
@@ -187,23 +77,23 @@ jobs:
           echo "- **Bucket S3 :** $(terraform output -raw bucket_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
           echo "- **Table DynamoDB :** $(terraform output -raw dynamodb_table_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
 
+  # ============================================================
+  # Vérification
+  # ============================================================
   verify-bootstrap:
     name: ✅ Verify Bootstrap
     runs-on: ubuntu-latest
-    needs: 
-      - verify-iam-role
-      - terraform-apply
+    needs: bootstrap
     
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/${{ env.ROLE_NAME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify S3 Bucket
