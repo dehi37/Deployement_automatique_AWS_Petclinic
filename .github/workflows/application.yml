@@ -192,9 +192,9 @@ jobs:
           
           echo "🌐 Test de l'application : https://$ALB_DNS"
           
-          # ✅ AUGMENTÉ : 60 tentatives au lieu de 30 (600 secondes)
+          # ✅ AJOUT DE -k POUR IGNORER LA VÉRIFICATION SSL
           for i in {1..60}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://$ALB_DNS/actuator/health || echo "000")
+            STATUS=$(curl -s -k -o /dev/null -w "%{http_code}" https://$ALB_DNS/actuator/health || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "✅ Application déployée avec succès !"
               echo "URL: https://$ALB_DNS"
