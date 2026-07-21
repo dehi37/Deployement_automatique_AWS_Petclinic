@@ -24,15 +24,22 @@ jobs:
   # ============================================================
   # PHASE 1 : Création du rôle IAM pour GitHub Actions
   # ============================================================
+  # .github/workflows/bootstrap.yml
   create-iam-role:
     name: 🔐 Création du rôle IAM (OIDC)
     runs-on: ubuntu-latest
-    # ⚠️ Cette étape utilise les credentials du dépôt (pas le rôle)
-    # Elle crée le rôle qui sera utilisé ensuite
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      # ⬇️⬇️⬇️ AJOUTER CETTE ÉTAPE ⬇️⬇️⬇️
+      - name: Configure AWS credentials (avec clés)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Install AWS CLI
         run: |
@@ -83,7 +90,7 @@ jobs:
                 {
                   "Effect": "Allow",
                   "Principal": {
-                    "Federated": "arn:aws:iam::049618906674:oidc-provider/token.actions.githubusercontent.com"
+                    "Federated": "arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:oidc-provider/token.actions.githubusercontent.com"
                   },
                   "Action": "sts:AssumeRoleWithWebIdentity",
                   "Condition": {
@@ -108,18 +115,14 @@ jobs:
             
             echo "✅ Rôle IAM créé : $ROLE_NAME"
             
-            # Attacher les politiques (AdministratorAccess pour simplifier)
+            # Attacher les politiques
             echo "📦 Attachement des politiques..."
-            
-            # Politique Administrateur (pour que tout fonctionne)
             aws iam attach-role-policy \
               --role-name $ROLE_NAME \
               --policy-arn arn:aws:iam::aws:policy/AdministratorAccess \
               --region ${{ env.AWS_REGION }}
             
-            # Attendre que le rôle soit disponible
             sleep 10
-            
             echo "✅ Politiques attachées"
           else
             echo "✅ Le rôle IAM existe déjà : $ROLE_NAME"
@@ -134,7 +137,6 @@ jobs:
           
           echo "✅ Rôle IAM prêt à être utilisé !"
           echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
-
   # ============================================================
   # PHASE 2 : Bootstrap Terraform (utilise le rôle créé)
   # ============================================================
