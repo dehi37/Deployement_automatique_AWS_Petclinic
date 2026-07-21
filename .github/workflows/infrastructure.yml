@@ -21,7 +21,7 @@ on:
       - '!terraform/bootstrap/**'
       - '!terraform/iam-github-actions.tf'
   schedule:
-    - cron: '0 8 * * *'
+    - cron: '0 8 * * *'  # Tous les jours à 8h
 
 permissions:
   id-token: write
@@ -34,6 +34,9 @@ env:
   TF_ROOT: terraform/environments/dev
 
 jobs:
+  # ============================================================
+  # JOB 1 : IaC Security Scan
+  # ============================================================
   terraform-security:
     name: 🔒 IaC Security Scan
     runs-on: ubuntu-latest
@@ -70,6 +73,9 @@ jobs:
           checkov --directory ./terraform --framework terraform --soft-fail --quiet --skip-path terraform/bootstrap || echo "ℹ️ checkov a trouvé des problèmes (ignorés)"
         continue-on-error: true
 
+  # ============================================================
+  # JOB 2 : Terraform Plan - Dev (sur PR uniquement)
+  # ============================================================
   terraform-plan:
     name: 📋 Terraform Plan - Dev
     runs-on: ubuntu-latest
@@ -119,6 +125,9 @@ jobs:
               body: `## 📋 Terraform Plan - Dev\n\n\`\`\`\n${summary}\n\`\`\`\n\n✅ Plan généré automatiquement. Mergez la PR pour appliquer les changements.`
             });
 
+  # ============================================================
+  # JOB 3 : Terraform Apply - Dev (sur merge sur main)
+  # ============================================================
   terraform-apply:
     name: 🚀 Terraform Apply - Dev
     runs-on: ubuntu-latest
@@ -158,7 +167,11 @@ jobs:
           echo "- ALB URL: https://$(terraform output -raw alb_dns_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
           echo "- ECS Cluster: $(terraform output -raw ecs_cluster_name 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
           echo "- VPC ID: $(terraform output -raw vpc_id 2>/dev/null || echo 'N/A')" >> $GITHUB_STEP_SUMMARY
+          echo "- Region: ${{ env.AWS_REGION }}" >> $GITHUB_STEP_SUMMARY
 
+  # ============================================================
+  # JOB 4 : Drift Detection (ACTIF - utilise les clés AWS)
+  # ============================================================
   infrastructure-drift:
     name: 🔍 Drift Detection (Schedule)
     runs-on: ubuntu-latest
@@ -173,7 +186,6 @@ jobs:
         with:
           terraform_version: '1.5.0'
 
-      # ✅ CORRIGÉ : Utilise les clés AWS
       - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
