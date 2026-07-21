@@ -1,5 +1,5 @@
 # .github/workflows/application.yml
-name: 🐳 Application - Build & Deploy
+name: 3. 🐳 Application - Build & Deploy
 
 on:
   push:

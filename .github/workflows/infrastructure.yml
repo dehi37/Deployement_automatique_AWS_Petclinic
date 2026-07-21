@@ -1,5 +1,5 @@
 # .github/workflows/infrastructure.yml
-name: 🏗️ Infrastructure - Plan & Apply
+name: 2. 🏗️ Infrastructure - Plan & Apply
 
 on:
   push:

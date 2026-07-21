@@ -1,5 +1,5 @@
 # .github/workflows/bootstrap.yml
-name: 🚀 Bootstrap - Création du Backend Terraform
+name: 1. 🚀 Bootstrap - Création du Backend Terraform
 
 on:
   workflow_dispatch:
