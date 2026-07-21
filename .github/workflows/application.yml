@@ -2,34 +2,40 @@
 name: 3. 🐳 Application - Build & Deploy
 
 on:
-  workflow_dispatch:  # ← AJOUTER CETTE LIGNE
+  workflow_dispatch:
   push:
     branches:
       - main
     paths:
-      - 'spring-petclinic/**'          # ✅ CORRIGÉ : app → spring-petclinic
-      - 'spring-petclinic/Dockerfile'  # ✅ CORRIGÉ
+      - 'spring-petclinic/**'
+      - 'spring-petclinic/Dockerfile'
   pull_request:
     branches:
       - main
     paths:
-      - 'spring-petclinic/**'          # ✅ CORRIGÉ
-      - 'spring-petclinic/Dockerfile'  # ✅ CORRIGÉ
+      - 'spring-petclinic/**'
+      - 'spring-petclinic/Dockerfile'
 
 permissions:
   id-token: write
   contents: read
+  security-events: write   # ✅ AJOUTÉ
+  pull-requests: write
+  issues: write
 
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: petclinic-prod/petclinic
-  APP_PATH: spring-petclinic           # ✅ CORRIGÉ : app → spring-petclinic
-  TF_ROOT: terraform/environments/dev  # ✅ CORRIGÉ : ajout de terraform/
+  APP_PATH: spring-petclinic
+  TF_ROOT: terraform/environments/dev
 
 jobs:
   build-and-security:
     name: 🔨 Build & Security Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # ✅ AJOUTÉ
 
     steps:
       - name: Checkout code
@@ -61,7 +67,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4   # ✅ v3 → v4
         with:
           sarif_file: 'trivy-results.sarif'
 
@@ -81,10 +87,11 @@ jobs:
           echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
           echo "timestamp=$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_OUTPUT
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.ACTIONS_ROLE_ARN }}  # ✅ CORRIGÉ : sans GITHUB_
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -129,10 +136,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (avec clés)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.ACTIONS_ROLE_ARN }}  # ✅ CORRIGÉ : sans GITHUB_
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Get ECS Cluster from Terraform
