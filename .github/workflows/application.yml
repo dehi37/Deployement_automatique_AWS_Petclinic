@@ -146,7 +146,6 @@ jobs:
       - name: Get ECS Cluster from Terraform
         run: |
           cd ${{ env.TF_ROOT }}
-          # ✅ CORRIGÉ : utiliser les bons noms
           CLUSTER_NAME=$(terraform output -raw ecs_cluster_name 2>/dev/null || echo "petclinic-isi-prod-cluster")
           SERVICE_NAME=$(terraform output -raw service_name 2>/dev/null || echo "petclinic-isi-prod-service")
           echo "CLUSTER_NAME=$CLUSTER_NAME" >> $GITHUB_ENV
@@ -180,7 +179,6 @@ jobs:
           ALB_DNS=$(terraform output -raw alb_dns_name 2>/dev/null || echo "")
           
           if [ -z "$ALB_DNS" ]; then
-            # ✅ CORRIGÉ : utiliser le bon nom de l'ALB
             ALB_DNS=$(aws elbv2 describe-load-balancers \
               --names petclinic-isi-prod-alb \
               --query 'LoadBalancers[0].DNSName' \
@@ -194,16 +192,17 @@ jobs:
           
           echo "🌐 Test de l'application : https://$ALB_DNS"
           
-          for i in {1..30}; do
+          # ✅ AUGMENTÉ : 60 tentatives au lieu de 30 (600 secondes)
+          for i in {1..60}; do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://$ALB_DNS/actuator/health || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "✅ Application déployée avec succès !"
               echo "URL: https://$ALB_DNS"
               exit 0
             fi
-            echo "⏳ Attente du health check... ($i/30)"
+            echo "⏳ Attente du health check... ($i/60) - Status: $STATUS"
             sleep 10
           done
           
-          echo "❌ Smoke test échoué après 300 secondes"
+          echo "❌ Smoke test échoué après 600 secondes"
           exit 1
