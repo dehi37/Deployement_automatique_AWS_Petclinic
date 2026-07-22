@@ -23,7 +23,8 @@ COPY src ./src
 
 # ✅ Build avec désactivation du formateur pour le test de rollback
 RUN --mount=type=cache,target=/root/.m2 \
-    mvn clean package -DskipTests -Dspring-javaformat.skip=true
+    #mvn clean package -DskipTests -Dspring-javaformat.skip=true
+    mvn clean verify -B -DskipTests -Dspring-javaformat.skip=true
 
 # ============================================================================
 # Stage 2: Runtime - Sécurité renforcée
