@@ -10,8 +10,9 @@ public class HealthController {
 
     @GetMapping("/actuator/health")
     public ResponseEntity<String> health() {
-        // ✅ Simulation d'une erreur - retourne 500 au lieu de 200
+        // Simule une erreur pour tester le rollback automatique
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-            .body("{\"status\":\"DOWN\"}");
+                .body("{\"status\":\"DOWN\"}");
     }
+
 }
