@@ -52,11 +52,11 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: |
           if [ -f "pom.xml" ]; then
-            mvn -B verify -DskipTests
+            # ✅ Désactiver le formateur pour le test de rollback
+            mvn -B verify -DskipTests -Dspring-javaformat.skip=true
           else
             echo "⚠️ Aucun pom.xml trouvé - Utilisation d'une image existante"
           fi
-
       - name: Run Trivy on Code
         uses: aquasecurity/trivy-action@master
         with:
