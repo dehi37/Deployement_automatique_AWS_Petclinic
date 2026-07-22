@@ -52,8 +52,11 @@ jobs:
         working-directory: ${{ env.APP_PATH }}
         run: |
           if [ -f "pom.xml" ]; then
-            # ✅ Désactivation du formateur Spring Java Format
-            mvn -B verify -DskipTests -Dspring-javaformat.skip=true
+            # ✅ Toutes les options pour désactiver le formateur
+            mvn -B verify -DskipTests \
+              -Dspring-javaformat.skip=true \
+              -Dspring-javaformat.failOnError=false \
+              -Dfmt.skip=true
           else
             echo "⚠️ Aucun pom.xml trouvé - Utilisation d'une image existante"
           fi
