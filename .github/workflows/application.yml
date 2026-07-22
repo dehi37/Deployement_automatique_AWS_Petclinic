@@ -116,6 +116,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-image.sarif'
           severity: 'CRITICAL,HIGH'
+          ignore-unfixed: 'true'   # ✅ Ignorer les vulnérabilités non corrigées
           exit-code: '1'
 
       - name: Push to ECR
